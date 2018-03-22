@@ -6,28 +6,7 @@ uint16_t       RAW_Stream::input_device = 0; // Input device to use (default = 0
 uint16_t       RAW_Stream::input_offset = 0; // Input channel offset (default = 0)
 uint16_t       RAW_Stream::buffer = 512; // Number of bytes (default = 512)
 
-/** Local Call back Implimentation? **/
-int /*RAW_Stream::*/createPacket(void *outputBuffer,
-        void *inputBuffer,
-        unsigned int nFrames,
-        double streamTime,
-        RtAudioStreamStatus status,
-        void *data ) {
-    if(status) {
-        throw Audio_Ex("Stream over/underflow detected.");
-    }
-    RAW_Stream *stream = static_cast<RAW_Stream *>(data);
-    stream->presetTimeStamp();
-    Packet audio_packet(
-            static_cast<unsigned char *>(inputBuffer),
-            static_cast<unsigned char *>(inputBuffer) + (nFrames*2*2));
-    stream->packetize(audio_packet);
-
-    return 0;
-}
-
-RAW_Stream::RAW_Stream() :
-Media_Object(RAW_Stream::sample_rate, "L16-2") {
+RAW_Stream::RAW_Stream(int read_or_recv, void *callback) {
 #ifdef __DEBUG__
     std::cout << "RAW_Stream::RAW_Stream called" << std::endl;
     adac.showWarnings(true);
@@ -38,17 +17,32 @@ Media_Object(RAW_Stream::sample_rate, "L16-2") {
     input_parameters.deviceId = adac.getDefaultInputDevice(); // input_device
     input_parameters.nChannels = channels;
     input_parameters.firstChannel = input_offset;
+    output_parameters.deviceId = adac.getDefaultInputDevice(); // input_device
+    output_parameters.nChannels = channels;
+    output_parameters.firstChannel = input_offset;
     frame_buffer = buffer;
     try {
-        adac.openStream(
-            NULL,
-            &input_parameters,
-            FORMAT, // ???
-            sample_rate,
-            &frame_buffer,
-            (RtAudioCallback)createPacket,
-            this,
-            &options );
+        if(read_or_recv == SENDER) {
+            adac.openStream(
+                NULL,
+                &input_parameters,
+                FORMAT,
+                sample_rate,
+                &frame_buffer,
+                (RtAudioCallback)callback,
+                this,
+                &options );
+        }else {
+            adac.openStream(
+                &output_parameters,
+                NULL,
+                FORMAT,
+                sample_rate,
+                &frame_buffer,
+                (RtAudioCallback)callback,
+                this,
+                &options );
+        }
     }
     catch(RtAudioError& e) {
         throw Audio_Ex(e.getMessage());
@@ -82,21 +76,4 @@ bool RAW_Stream::isStreamRunning() {
         return false;
     }
     return true;
-}
-
-
-int RAW_Stream::getSampleRate() const {
-    return RAW_Stream::sample_rate;
-}
-
-std::string RAW_Stream::getMediaName() const {
-    return "L16";
-}
-
-std::string RAW_Stream::getMediaType() const {
-    return "audio";
-}
-
-int RAW_Stream::getEncodingParameter() const {
-    return RAW_Stream::channels;
 }
